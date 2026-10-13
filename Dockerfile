@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && rm -rf /tmp/alist.tar.gz /var/lib/apt/lists/* \
     && useradd -m -u 1000 user
 WORKDIR /app
-COPY --chown=user:user bootstrap.py /app/bootstrap.py
+COPY --chown=user:user bootstrap.py upload-ui.html /app/
 USER user
 ENV ALIST_DATA_DIR=/home/user/alist-data ALIST_BINARY=/usr/local/bin/alist PYTHONUNBUFFERED=1
 EXPOSE 10000

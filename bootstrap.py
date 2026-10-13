@@ -53,7 +53,8 @@ def prepare(binary, data_dir, password, port, address, public_read=False):
                        '<a href="/@login?redirect=%2F%40manage" style="display:block;padding:10px 22px;'
                        'background:#1890ff;color:white;border-radius:8px;text-decoration:none;'
                        'box-shadow:0 2px 8px #0003">編輯 🔒</a></div>') if public_read else ''
-        connection.execute("UPDATE x_setting_items SET value = ? WHERE key = 'customize_body'", (edit_button,))
+        upload_ui = Path(__file__).with_name('upload-ui.html').read_text()
+        connection.execute("UPDATE x_setting_items SET value = ? WHERE key = 'customize_body'", (edit_button + upload_ui,))
         connection.commit()
     return config
 

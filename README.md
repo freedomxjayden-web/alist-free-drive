@@ -12,6 +12,14 @@ AList v3.65.0 跑在 Render Free Web Service，檔案存 Google Drive。使用 R
 
 `render.yaml` 也可供 Blueprint 使用，已固定 `plan: free`；部署前仍要核對帳戶頁面的實際價格。
 
+## 快速上傳
+
+登入 `admin` 後，在檔案瀏覽頁左下角的快速上傳區拖入文件，或聚焦該區後按 ⌘V 貼上圖片／截圖，即開始上傳。也可按「選擇文件」，支援多檔。目的地為操作開始時正在瀏覽的掛載資料夾；根首頁沒有可寫入掛載時會提示選擇資料夾。
+
+同名文件會逐一詢問是否覆蓋，選擇跳過會保留原檔；失敗項目可按「重試」。成功後更新列表。訪客只能瀏覽，不能上傳。暫不支援整個資料夾、下載連結或保證 Finder 複製文件後直接貼上。
+
+介面透過 AList 的 `customize_body` 設定載入，與本部署綁定；不要另外覆寫該設定。
+
 ## 掛載 Google Drive
 
 Google 免費 15 GB 空間由 Drive、Gmail 和 Google Photos 共用。按照 [AList 官方 Google Drive 文件](https://alistgo.com/guide/drivers/googledrive.html) 用自己的 OAuth Client ID、Client Secret、Refresh Token 掛載。Google Cloud 專案只啟用 Drive API，不啟用計費。帳戶登入及 Google 授權由本人完成。
@@ -39,6 +47,6 @@ python3 export-storages.py https://你的實際網址.onrender.com
 
 ## 驗證範圍
 
-啟動腳本已在官方 macOS AList 原生版本上驗證登入、訪客保護及掛載還原。Render Docker Linux 建置與啟動已成功，實際網址為 https://alist-free-drive.onrender.com，登入頁已確認可開啟。公開模式已在本機通過 8 項權限檢查及瀏覽器驗證：訪客可列出檔案，寫入和管理 API 被拒絕，編輯按鈕通往登入頁。公開模式尚未正式啟用。Google Drive 尚未掛載，實際雲端上傳、下載及重啟還原仍待驗證。
+啟動腳本已在官方 macOS AList 原生版本上驗證登入、訪客保護及掛載還原。Render Docker Linux 建置與啟動已成功，實際網址為 https://alist-free-drive.onrender.com，登入頁已確認可開啟。公開模式已在本機通過 8 項權限檢查及瀏覽器驗證：訪客可列出檔案，寫入和管理 API 被拒絕，編輯按鈕通往登入頁。快速上傳已通過 13 項模擬介面行為檢查、7 項本機 AList API 驗證及瀏覽器多檔選取上傳驗證；拖入與剪貼簿圖片事件使用模擬測試，實際 Google Drive 上傳仍待掛載後驗證。公開模式已部署到 https://alist-free-drive.onrender.com，正式站已驗證首頁无需登入，編輯按鈕通往密碼登入頁。Google Drive 尚未掛載，實際雲端上傳、下載及重啟還原仍待驗證。
 
 參考：<https://render.com/docs/free>、<https://render.com/docs/faq>、<https://alistgo.com/guide/drivers/googledrive.html>

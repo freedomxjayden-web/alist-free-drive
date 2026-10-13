@@ -1,0 +1,135 @@
+<style>
+#quick-upload{position:fixed;bottom:74px;left:18px;width:min(420px,calc(100vw - 36px));z-index:999;font:14px/1.5 system-ui,sans-serif;color:#17243b;background:#fff;border:1px solid #dce5f3;border-radius:16px;box-shadow:0 8px 30px #203a5b24;padding:14px}
+#quick-upload[hidden]{display:none}#quick-upload *{box-sizing:border-box}#quick-upload h2{font-size:16px;margin:0 0 8px}#quick-upload p{margin:6px 0;color:#52637b}#quick-upload button,#quick-upload a{font:inherit;cursor:pointer;color:#1764ce}#quick-upload button{border:1px solid #dce5f3;border-radius:8px;background:#f5f8ff;padding:6px 12px}#quick-upload button:disabled{opacity:.5;cursor:default}#quick-upload-zone{border:2px dashed #8eafe2;border-radius:12px;padding:16px;text-align:center;outline-offset:3px}#quick-upload-zone:focus,#quick-upload-zone.dragging{border-color:#1764ce;background:#edf4ff}#quick-upload-list{list-style:none;margin:8px 0 0;padding:0;max-height:190px;overflow:auto}#quick-upload-list li{border-top:1px solid #edf0f6;padding:8px 0;overflow-wrap:anywhere}#quick-upload-list progress{width:100%;height:6px;display:block;margin:5px 0}#quick-upload-destination{overflow-wrap:anywhere;font-size:12px}#quick-upload-collapse{float:right}#quick-upload-summary{font-size:12px}#quick-upload-dialog{border:0;border-radius:14px;max-width:min(420px,90vw);padding:24px;box-shadow:0 15px 60px #0003;font:15px/1.5 system-ui}#quick-upload-dialog::backdrop{background:#17243b80}#quick-upload-dialog p{overflow-wrap:anywhere}#quick-upload-dialog button{padding:8px 16px;margin:8px 8px 0 0;cursor:pointer}
+</style>
+<section id="quick-upload" aria-label="快速上傳" hidden>
+ <button id="quick-upload-collapse" type="button" aria-expanded="true">收起</button><h2>快速上傳</h2>
+ <div id="quick-upload-content">
+  <div id="quick-upload-zone" tabindex="0" role="group" aria-label="拖入文件或貼上圖片上傳">
+   <strong>拖入文件，或貼上圖片</strong><p>圖片／截圖可在此按 ⌘V</p>
+   <button id="quick-upload-choose" type="button">選擇文件</button><input id="quick-upload-input" type="file" multiple hidden>
+  </div>
+  <p id="quick-upload-destination"></p><p id="quick-upload-hint" role="status"></p>
+  <a id="quick-upload-login" hidden>編輯 🔒 · 登入後上傳</a>
+  <ul id="quick-upload-list" aria-label="上傳進度"></ul>
+ </div><p id="quick-upload-summary" aria-live="polite"></p>
+</section>
+<dialog id="quick-upload-dialog" aria-labelledby="quick-upload-dialog-title"><h2 id="quick-upload-dialog-title">同名文件</h2><p></p><button type="button" data-choice="yes">覆蓋</button><button type="button" data-choice="no">跳過</button></dialog>
+<script>
+(() => {
+ 'use strict';
+ if (window.alistQuickUploadLoaded) return;
+ window.alistQuickUploadLoaded = true;
+ const $ = id => document.getElementById(id);
+ const panel=$('quick-upload'), zone=$('quick-upload-zone'), list=$('quick-upload-list');
+ const jobs=[]; let busy=false, revision=0, lastKey='', ready=false, refreshNeeded=false;
+ const token=()=>localStorage.getItem('token')||'';
+ const headers=()=>({'Authorization':token(),'Client-Id':localStorage.getItem('alist_client_id')||''});
+ const currentPath=()=>{try{return decodeURIComponent(location.pathname).replace(/\/+$/,'')||'/';}catch{return null;}};
+ const browsing=p=>p!==null&&!p.startsWith('/@')&&!p.startsWith('/s/');
+ const join=(dir,name)=>(dir==='/'?'':dir)+'/'+name;
+ const safeName=n=>Boolean(n&&n!=='.'&&n!=='..'&&!/[\/\\\x00-\x1f]/.test(n));
+ class UploadError extends Error { constructor(message,code){super(message);this.code=code;} }
+ async function api(path,payload){
+  let response;
+  try {response=await fetch('/api/'+path,{method:payload===undefined?'GET':'POST',headers:{...headers(),'Content-Type':'application/json'},body:payload===undefined?undefined:JSON.stringify(payload),credentials:'same-origin'});}
+  catch {throw new UploadError('網絡中斷，請稍後重試。');}
+  let result;try{result=await response.json();}catch{throw new UploadError('伺服器未回應，請稍後重試。');}
+  if(!response.ok||result.code!==200) throw new UploadError(result.code===401||result.code===403?'登入已失效或沒有操作權限，請重新登入。':'無法讀取資料夾，請確認儲存空間已掛載。',result.code||response.status);
+  return result.data;
+ }
+ async function mounts(){let page=1,all=[];while(true){const data=await api('admin/storage/list?page='+page+'&per_page=100');all.push(...(data.content||[]));if(page*100>=data.total||!data.content?.length)break;page++;}return all.filter(s=>!s.disabled);}
+ async function destination(path){
+  if(!token())throw new UploadError('請先按「編輯 🔒」登入管理員。',401);
+  const me=await api('me');if(me.username!=='admin')throw new UploadError('只有管理員可以上傳。',403);
+  const storages=await mounts();
+  if(!storages.length)throw new UploadError('尚未加入儲存空間，請先掛載 Google Drive。');
+  if(!storages.some(s=>s.mount_path==='/'||path===s.mount_path||path.startsWith(s.mount_path.replace(/\/$/,'')+'/')))throw new UploadError('請先進入一個掛載資料夾，再拖入或貼上文件。');
+  if(path!=='/'){const obj=await api('fs/get',{path});if(!obj.is_dir)throw new UploadError('請返回文件所在的資料夾再上傳。');}
+  return api('fs/list',{path,refresh:true,per_page:0,page:1});
+ }
+ async function update(){
+  const path=currentPath(), key=location.pathname+'\0'+token();
+  if(key===lastKey)return;lastKey=key;ready=false;const rev=++revision;
+  panel.hidden=!browsing(path);if(panel.hidden)return;
+  $('quick-upload-destination').textContent='目的地：'+path;
+  $('quick-upload-login').href='/@login?redirect='+encodeURIComponent(location.pathname);
+  $('quick-upload-login').hidden=Boolean(token());
+  $('quick-upload-hint').textContent='正在檢查上傳位置…';
+  $('quick-upload-choose').disabled=true;
+  try{await destination(path);if(rev!==revision)return;ready=true;$('quick-upload-hint').textContent='拖入後即開始上傳；同名文件會先詢問。';}
+  catch(error){if(rev!==revision)return;$('quick-upload-hint').textContent=error.message;if(error.code===401||error.code===403)$('quick-upload-login').hidden=false;}
+  if(rev===revision)$('quick-upload-choose').disabled=!ready;
+ }
+ function overwrite(name,path){
+  const dialog=$('quick-upload-dialog');dialog.querySelector('p').textContent=path+' 已有「'+name+'」。要覆蓋原檔嗎？';
+  return new Promise(resolve=>{const finish=value=>{dialog.close();dialog.onclick=null;dialog.oncancel=null;resolve(value);};dialog.onclick=event=>{const c=event.target.dataset.choice;if(c)finish(c==='yes');};dialog.oncancel=event=>{event.preventDefault();finish(false);};dialog.showModal();});
+ }
+ function draw(job){
+  job.label.textContent=job.name+' · '+job.path+' · '+job.status;
+  job.progress.value=job.percent;job.retry.hidden=!job.failed;job.retry.disabled=busy;
+  $('quick-upload-summary').textContent=jobs.filter(j=>j.done).length+' 個成功 · '+jobs.filter(j=>j.failed).length+' 個失敗';
+ }
+ function upload(job,replace){return new Promise((resolve,reject)=>{
+  const xhr=new XMLHttpRequest();xhr.open('PUT','/api/fs/put');xhr.timeout=30*60*1000;
+  const hs={...headers(),'File-Path':encodeURIComponent(join(job.path,job.file.name)),'Content-Type':job.file.type||'application/octet-stream','Last-Modified':String(job.file.lastModified),'As-Task':'false','Overwrite':String(replace)};
+  for(const [k,v] of Object.entries(hs))xhr.setRequestHeader(k,v);
+  xhr.upload.onprogress=e=>{if(e.lengthComputable){job.percent=Math.round(e.loaded/e.total*100);job.status=job.percent===100?'正在保存…':'上傳中 '+job.percent+'%';draw(job);}};
+  xhr.onerror=()=>reject(new UploadError('網絡中斷，請重試。'));xhr.ontimeout=()=>reject(new UploadError('上傳逾時，請重試。'));xhr.onabort=()=>reject(new UploadError('上傳已中止，請重試。'));
+  xhr.onload=()=>{let result;try{result=JSON.parse(xhr.responseText);}catch{reject(new UploadError('伺服器回應異常，請重試。'));return;}
+   if(xhr.status>=200&&xhr.status<300&&result.code===200)resolve();
+   else reject(new UploadError(result.message==='file exists'?'同名文件剛被建立，請重試並確認是否覆蓋。':result.code===401||result.code===403?'登入已失效或沒有寫入權限，請重新登入後重試。':'儲存失敗，請檢查雲盤連線、容量及寫入權限後重試。',result.code));};
+  xhr.send(job.file);
+ });}
+ async function refreshList(){
+  if(!refreshNeeded)return;
+  // AList v3.65's native refresh control preserves failed File objects for retry.
+  let control=document.querySelector('.left-toolbar-in [tips="refresh"]');
+  if(!control){document.querySelector('.toolbar-toggle')?.dispatchEvent(new MouseEvent('click',{bubbles:true}));await new Promise(r=>setTimeout(r,100));control=document.querySelector('.left-toolbar-in [tips="refresh"]');}
+  if(control){control.dispatchEvent(new MouseEvent('click',{bubbles:true}));refreshNeeded=false;return;}
+  // Refresh completed batches without persisting file contents or login credentials.
+  if(!jobs.some(j=>j.failed||j.pending)&&jobs.some(j=>j.done)){
+   sessionStorage.setItem('alist-quick-upload-result',jobs.filter(j=>j.done).length+' 個文件已上傳成功。');location.reload();
+  }
+ }
+ async function run(){
+  if(busy)return;busy=true;
+  for(const job of jobs){if(!job.pending)continue;job.pending=false;job.failed=false;job.status='正在檢查…';draw(job);
+   try{const listing=await destination(job.path);const collision=(listing.content||[]).find(obj=>obj.name===job.file.name);
+    if(collision?.is_dir)throw new UploadError('同名資料夾已存在，請先修改文件名稱。');
+    if(collision&&!(await overwrite(job.file.name,job.path))){job.status='已跳過';job.file=null;draw(job);continue;}
+    // Recheck session after a confirmation dialog; send with the current AList token.
+    if(!token()||(await api('me')).username!=='admin')throw new UploadError('請重新登入管理員後重試。',401);
+    job.status='上傳中';draw(job);await upload(job,Boolean(collision));job.done=true;job.file=null;job.status='已成功';job.percent=100;refreshNeeded=true;
+   }catch(error){job.failed=true;job.status=error.message;}
+   draw(job);
+  }
+  busy=false;for(const job of jobs)draw(job);await refreshList();
+ }
+ function enqueue(files,path){
+  if(!ready||!browsing(path)){zone.focus();return;}
+  for(let file of files){
+   if(!safeName(file.name)){$('quick-upload-hint').textContent='文件名稱含有不支援的字元，請先改名。';continue;}
+   const li=document.createElement('li'),label=document.createElement('span'),progress=document.createElement('progress'),retry=document.createElement('button');
+   progress.max=100;retry.type='button';retry.textContent='重試';retry.hidden=true;li.append(label,progress,retry);list.append(li);
+   const job={name:file.name,file,path,label,progress,retry,percent:0,status:'等待上傳',pending:true,failed:false,done:false};jobs.push(job);
+   retry.onclick=()=>{job.pending=true;job.percent=0;run();};draw(job);
+  }
+  run();
+ }
+ zone.addEventListener('dragover',event=>{event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect=ready?'copy':'none';zone.classList.add('dragging');});
+ zone.addEventListener('dragleave',()=>zone.classList.remove('dragging'));
+ zone.addEventListener('drop',event=>{event.preventDefault();event.stopPropagation();zone.classList.remove('dragging');
+  if(Array.from(event.dataTransfer.items||[]).some(item=>item.webkitGetAsEntry?.()?.isDirectory)){$('quick-upload-hint').textContent='請拖入文件；暫不支援整個資料夾。';return;}
+  enqueue(Array.from(event.dataTransfer.files),currentPath());
+ });
+ zone.addEventListener('paste',event=>{if(event.target.closest('input,textarea,[contenteditable="true"]'))return;
+  const files=Array.from(event.clipboardData?.files||[]).filter(file=>file.type.startsWith('image/'));if(!files.length)return;event.preventDefault();event.stopPropagation();enqueue(files,currentPath());
+ });
+ $('quick-upload-choose').onclick=()=>$('quick-upload-input').click();
+ $('quick-upload-input').onchange=event=>{enqueue(Array.from(event.target.files),currentPath());event.target.value='';};
+ $('quick-upload-collapse').onclick=()=>{const content=$('quick-upload-content');content.hidden=!content.hidden;$('quick-upload-collapse').textContent=content.hidden?'展開':'收起';$('quick-upload-collapse').setAttribute('aria-expanded',String(!content.hidden));};
+ const previous=sessionStorage.getItem('alist-quick-upload-result');if(previous){$('quick-upload-summary').textContent=previous;sessionStorage.removeItem('alist-quick-upload-result');}
+ setInterval(update,700);update();
+})();
+</script>

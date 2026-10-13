@@ -1,0 +1,5 @@
+.git
+*.secret.json
+.env*
+data
+__pycache__

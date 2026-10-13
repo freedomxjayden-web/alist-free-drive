@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: alist-free-drive
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/public/settings
+    envVars:
+      - key: ALIST_ADMIN_PASSWORD
+        sync: false
+      - key: ALIST_STORAGES_JSON
+        value: '[]'

@@ -117,5 +117,10 @@ if __name__ == '__main__':
         sys.exit(main())
     except Exception as error:
         # Never print secrets, full request bodies, or credential-bearing URLs.
-        print(f'Startup failed ({type(error).__name__}). Check runtime Secrets and storage settings.', file=sys.stderr)
+        if isinstance(error, RuntimeError):
+            print(f'Startup failed: {error}', file=sys.stderr)
+        elif isinstance(error, json.JSONDecodeError):
+            print('Startup failed: ALIST_STORAGES_JSON is not valid JSON.', file=sys.stderr)
+        else:
+            print(f'Startup failed ({type(error).__name__}). Check runtime Secrets and storage settings.', file=sys.stderr)
         sys.exit(1)

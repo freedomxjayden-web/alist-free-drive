@@ -25,7 +25,7 @@ def api(port, path, method='GET', payload=None, token=None):
     return result.get('data')
 
 
-def prepare(binary, data_dir, password, port, address):
+def prepare(binary, data_dir, password, port, address, public_read=False):
     data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     subprocess.run([binary, 'admin', 'set', password, '--data', str(data_dir)],
                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -44,8 +44,16 @@ def prepare(binary, data_dir, password, port, address):
     if table != 'x_users':
         raise RuntimeError('Unexpected database schema')
     with sqlite3.connect(config['database']['db_file']) as connection:
-        # Only the administrator can log in on a newly provisioned Space.
         connection.execute("UPDATE x_users SET disabled = CASE WHEN username = 'admin' THEN 0 ELSE 1 END")
+        if public_read:
+            # Guest can browse, but has no upload, rename, move, or delete permissions.
+            connection.execute("UPDATE x_users SET disabled = 0, base_path = '/', permission = 0, role = ? WHERE username = 'guest'", (json.dumps([1]).encode(),))
+            connection.execute("UPDATE x_roles SET raw_permission = ? WHERE name = 'guest'", (json.dumps([{'path': '/', 'permission': 0}]),))
+        edit_button = ('<div style="position:fixed;bottom:18px;right:20px;z-index:1000">'
+                       '<a href="/@login?redirect=%2F%40manage" style="display:block;padding:10px 22px;'
+                       'background:#1890ff;color:white;border-radius:8px;text-decoration:none;'
+                       'box-shadow:0 2px 8px #0003">編輯 🔒</a></div>') if public_read else ''
+        connection.execute("UPDATE x_setting_items SET value = ? WHERE key = 'customize_body'", (edit_button,))
         connection.commit()
     return config
 
@@ -81,7 +89,8 @@ def main():
     port = int(os.environ.get('ALIST_PORT', os.environ.get('PORT', '10000')))
     binary = os.environ.get('ALIST_BINARY', '/usr/local/bin/alist')
     data_dir = Path(os.environ.get('ALIST_DATA_DIR', '/tmp/alist-space')).resolve()
-    prepare(binary, data_dir, password, port, os.environ.get('ALIST_BIND', '0.0.0.0'))
+    public_read = os.environ.get('ALIST_PUBLIC_READ', 'false').lower() == 'true'
+    prepare(binary, data_dir, password, port, os.environ.get('ALIST_BIND', '0.0.0.0'), public_read)
     process = subprocess.Popen([binary, 'server', '--data', str(data_dir)])
     def stop(signum, frame):
         process.terminate()
@@ -100,7 +109,7 @@ def main():
             raise RuntimeError('AList startup timed out.')
         restore_storages(port, password, storages)
         del password
-        print('AList ready. Guest access disabled. Storage configuration restored.', flush=True)
+        print(f'AList ready. Public browsing {"enabled" if public_read else "disabled"}. Storage configuration restored.', flush=True)
         return process.wait()
     finally:
         if process.poll() is None:

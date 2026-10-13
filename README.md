@@ -6,7 +6,9 @@ AList v3.65.0 跑在 Render Free Web Service，檔案存 Google Drive。使用 R
 
 將本目錄推送至自己的 GitHub 儲存庫，在 Render 建立 Web Service 並連接此儲存庫。Runtime 選 Docker，Instance Type 選 Free，Health Check Path 設為 `/api/public/settings`。不要加入付費磁碟或付費資料庫。
 
-在 Render Environment 設定 `ALIST_ADMIN_PASSWORD`，自選至少 16 字元密碼。不要把它寫進程式、README 或 Git。啟動後使用 `admin` 登入，密碼是 Environment 設定的值。訪客停用。
+在 Render Environment 設定 `ALIST_ADMIN_PASSWORD`，自選至少 16 字元密碼。不要把它寫進程式、README 或 Git。啟動後使用 `admin` 登入，密碼是 Environment 設定的值。預設訪客停用。
+
+若要公開只讀瀏覽，在 Environment 設定 `ALIST_PUBLIC_READ=true`。任何取得網址的人都能瀏覽及下載掛載目錄內的檔案；訪客禁止上傳、建立資料夾、改名、移動和刪除。頁面右下角「編輯 🔒」通往管理員密碼登入頁。請只掛載準備公開的資料夾。改回 `false` 並重新部署即可關閉公開瀏覽。
 
 `render.yaml` 也可供 Blueprint 使用，已固定 `plan: free`；部署前仍要核對帳戶頁面的實際價格。
 
@@ -37,6 +39,6 @@ python3 export-storages.py https://你的實際網址.onrender.com
 
 ## 驗證範圍
 
-啟動腳本已在官方 macOS AList 原生版本上驗證登入、訪客保護及掛載還原。Docker Linux 建置、Render 帳戶資格和 Google Drive 需部署到本人帳戶後確認。
+啟動腳本已在官方 macOS AList 原生版本上驗證登入、訪客保護及掛載還原。Render Docker Linux 建置與啟動已成功，實際網址為 https://alist-free-drive.onrender.com，登入頁已確認可開啟。公開模式已在本機通過 8 項權限檢查及瀏覽器驗證：訪客可列出檔案，寫入和管理 API 被拒絕，編輯按鈕通往登入頁。公開模式尚未正式啟用。Google Drive 尚未掛載，實際雲端上傳、下載及重啟還原仍待驗證。
 
 參考：<https://render.com/docs/free>、<https://render.com/docs/faq>、<https://alistgo.com/guide/drivers/googledrive.html>

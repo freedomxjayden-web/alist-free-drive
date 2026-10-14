@@ -46,7 +46,7 @@
   if(!storages.length)throw new UploadError('尚未加入儲存空間，請先掛載 Google Drive。');
   if(!storages.some(s=>s.mount_path==='/'||path===s.mount_path||path.startsWith(s.mount_path.replace(/\/$/,'')+'/')))throw new UploadError('請先進入一個掛載資料夾，再拖入或貼上文件。');
   if(path!=='/'){const obj=await api('fs/get',{path});if(!obj.is_dir)throw new UploadError('請返回文件所在的資料夾再上傳。');}
-  return api('fs/list',{path,refresh:true,per_page:0,page:1});
+  return api('fs/list',{path,per_page:0,page:1});
  }
  async function update(){
   const path=currentPath(), key=location.pathname+'\0'+token();
